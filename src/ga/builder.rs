@@ -7,7 +7,7 @@ use crate::{
 };
 use std::{marker::PhantomData, rc::Rc};
 
-const DEFAULT_MIN_POPULATION_SIZE: usize = 6;
+const DEFAULT_MIN_POPULATION_SIZE: usize = 1;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GeneticAlgorithmBuilder<G, F, E, S, C, M, R>
