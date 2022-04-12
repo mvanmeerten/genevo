@@ -224,7 +224,7 @@ where
 }
 
 pub trait MultiPointCrossover: Genotype {
-    type Dna;
+    type Dna: Debug;
 
     fn crossover<R>(parents: Parents<Self>, num_cut_points: usize, rng: &mut R) -> Children<Self>
     where
