@@ -36,7 +36,6 @@ use crate::{
 };
 use chrono::Local;
 #[cfg(not(target_arch = "wasm32"))]
-use rayon;
 use std::{
     fmt::{self, Display},
     marker::PhantomData,
@@ -205,21 +204,24 @@ impl<G, F, E, S, C, M, R> Algorithm for GeneticAlgorithm<G, F, E, S, C, M, R>
         let best_solution = determine_best_solution(iteration, &evaluation.result);
 
         // Stage 3: The making of a new population:
-        let selection = timed(|| self.selector.select_from(&evaluation.result, rng)).run();
-        let mut breeding = par_breed_offspring(selection.result, &self.breeder, &self.mutator, rng);
-        let reinsertion = timed(|| {
+        let parents = timed(|| self.selector.select_from(&evaluation.result, rng)).run();
+        println!("Parents -> mu!: {:?}", parents.result);
+        let mut offspring = par_breed_offspring(parents.result, &self.breeder, &self.mutator, rng);
+        println!("Offspring -> lambda!: {:?}", offspring.result);
+        let new_population = timed(|| {
             self.reinserter
-                .combine(&mut breeding.result, &evaluation.result, rng)
-        })
-            .run();
+                .combine(&mut offspring.result, &evaluation.result, rng)
+        }).run();
+        println!("New population -> mu!: {:?}", new_population.result);
 
         // Stage 4: On to the next generation:
         self.processing_time = evaluation.time
             + best_solution.time
-            + selection.time
-            + breeding.time
-            + reinsertion.time;
-        let next_generation = reinsertion.result;
+            + parents.time
+            + offspring.time
+            + new_population.time;
+        let next_generation = new_population.result;
+        println!("Next generation: {:?}", next_generation);
         self.population = Rc::new(next_generation);
         Ok(State {
             evaluated_population: evaluation.result,
@@ -354,40 +356,17 @@ fn par_breed_offspring<G, C, M>(
         C: CrossoverOp<G> + Sync,
         M: MutationOp<G> + Sync,
 {
-    if parents.len() < 50 {
-        timed(|| {
-            let mut offspring: Offspring<G> = Vec::with_capacity(parents.len() * parents[0].len());
-            for parents in parents {
-                let children = breeder.crossover(parents, rng);
-                for child in children {
-                    let mutated = mutator.mutate(child, rng);
-                    offspring.push(mutated);
-                }
+    timed(|| {
+        let mut offspring: Offspring<G> = Vec::with_capacity(parents.len());
+        for parents in parents {
+            let children = breeder.crossover(parents, rng);
+            for child in children {
+                let mutated = mutator.mutate(child, rng);
+                offspring.push(mutated);
             }
-            offspring
-        })
-            .run()
-    } else {
-        rng.jump();
-        let mut rng1 = rng.clone();
-        rng.jump();
-        let mut rng2 = rng.clone();
-        let mid_point = parents.len() / 2;
-        let mut offspring = Vec::with_capacity(parents.len() * 2);
-        let mut parents = parents;
-        let r_slice = parents.drain(mid_point..).collect();
-        let l_slice = parents;
-        let (mut left, mut right) = rayon::join(
-            || par_breed_offspring(l_slice, breeder, mutator, &mut rng1),
-            || par_breed_offspring(r_slice, breeder, mutator, &mut rng2),
-        );
-        offspring.append(&mut left.result);
-        offspring.append(&mut right.result);
-        TimedResult {
-            result: offspring,
-            time: left.time + right.time,
         }
-    }
+        offspring
+    }).run()
 }
 
 #[cfg(target_arch = "wasm32")]
